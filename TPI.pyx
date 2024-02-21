@@ -58,6 +58,20 @@ cdef extern from "TensorProductInterpolation.h":
         double x
     );
 
+    int Bspline_basis_1st_derivative_1D(
+        double *D3_B_array,
+        int n,
+        gsl_bspline_workspace *bw,
+        double x
+    );
+
+    int Bspline_basis_2nd_derivative_1D(
+        double *D3_B_array,
+        int n,
+        gsl_bspline_workspace *bw,
+        double x
+    );
+
     int Bspline_basis_3rd_derivative_1D(
         double *D3_B_array,
         int n,
@@ -130,7 +144,7 @@ cdef class TP_Interpolant_ND:
     cdef nodes, n
     cdef c, knots_list
 
-    def __init__(self, list nodes, coeffs=None, F=None):
+    def __init__(self, list nodes, coeffs=None, F=None, bc_dims=None):
         """Constructor
 
         Arguments:
@@ -157,8 +171,10 @@ cdef class TP_Interpolant_ND:
         self.TPInterpolationSetupND()
         if coeffs is not None:
             self.SetSplineCoefficientsND(coeffs)
+        if bc_dims is None:
+            bc_dims = ["not-a-knot" for k in range(self.n)]
         if F is not None:
-            self.ComputeSplineCoefficientsND(F)
+            self.ComputeSplineCoefficientsND(F, bc_dims)
 
         # Should do this in module __init__.py
         cdef gsl_error_handler_t *old_handler = gsl_set_error_handler(<gsl_error_handler_t *> handler);
@@ -225,7 +241,7 @@ cdef class TP_Interpolant_ND:
 
         return self.TPInterpolationND(X_array)
 
-    def ComputeSplineCoefficientsND(self, F):
+    def ComputeSplineCoefficientsND(self, F, bc_dims):
         """Compute tensor product spline coefficients on the stored grid using data F.
 
         Arguments:
@@ -246,7 +262,7 @@ cdef class TP_Interpolant_ND:
         cdef unsigned int i
         for i in range(d):
             b = BsplineBasis1D(nodesND[i])
-            A, knots = b.AssembleSplineMatrix()
+            A, knots = b.AssembleSplineMatrix(bc_dims[i])
             Ainv = np.linalg.inv(A)
             inv_1d_matrices.append(Ainv)
             knots_list.append(knots)
@@ -349,6 +365,47 @@ cdef class BsplineBasis1D:
 
         return B_array
 
+    def EvaluateBsplines1stDerivatives(self, x):
+        """Evaluate the 1st derivative of B-spline basis functions at point x.
+
+        Arguments:
+          * x: evaluation point
+
+        Returns:
+          * B_array: a 1D array of evaluated 1st derivatives of B-splines
+
+        """
+        cdef np.ndarray[np.double_t, ndim=1] DB_array = np.zeros(self.nbasis)
+        cdef int i = Bspline_basis_1st_derivative_1D(<double*> DB_array.data,
+                                            self.nbasis, self.bw, x)
+        if i == TPI_FAIL:
+            raise ValueError("Error: Bspline_basis_1st_derivative_1D(): x: "
+            "%g is outside of knots vector with bounds [%g, %g]!\n", 
+            x, self.xi[0], self.xi[-1])
+
+        return DB_array
+
+
+    def EvaluateBsplines2ndDerivatives(self, x):
+        """Evaluate the 2nd derivative of B-spline basis functions at point x.
+
+        Arguments:
+          * x: evaluation point
+
+        Returns:
+          * B_array: a 1D array of evaluated 2nd derivatives of B-splines
+
+        """
+        cdef np.ndarray[np.double_t, ndim=1] DB_array = np.zeros(self.nbasis)
+        cdef int i = Bspline_basis_2nd_derivative_1D(<double*> DB_array.data,
+                                            self.nbasis, self.bw, x)
+        if i == TPI_FAIL:
+            raise ValueError("Error: Bspline_basis_2nd_derivative_1D(): x: "
+            "%g is outside of knots vector with bounds [%g, %g]!\n", 
+            x, self.xi[0], self.xi[-1])
+
+        return DB_array
+
     def EvaluateBsplines3rdDerivatives(self, x):
         """Evaluate the 3rd derivative of B-spline basis functions at point x.
 
@@ -369,7 +426,7 @@ cdef class BsplineBasis1D:
 
         return DB_array
 
-    def AssembleSplineMatrix(self):
+    def AssembleSplineMatrix(self, bc="not-a-knot"):
         """Assemble spline matrix for cubic spline with not-a-knot boundary conditions
 
         Returns:
@@ -388,21 +445,28 @@ cdef class BsplineBasis1D:
         for i in range(self.n):
             phi_internal[i] = self.EvaluateBsplines(self.xi[i])
 
-        # Prepare not-a-knot conditions from continuity of the 3rd derivative 
-        # at the 2nd and the penultimate gridpoint
+        if bc == "not-a-knot":
+            # Prepare not-a-knot conditions from continuity of the 3rd derivative 
+            # at the 2nd and the penultimate gridpoint
 
-        # Impose these conditions in-between the first and last two points:
-        xi12mean  = (self.xi[0]  + self.xi[1]) / 2.
-        xi23mean  = (self.xi[1]  + self.xi[2]) / 2.
-        xim32mean = (self.xi[-3] + self.xi[-2]) / 2.
-        xim21mean = (self.xi[-2] + self.xi[-1]) / 2.
+            # Impose these conditions in-between the first and last two points:
+            xi12mean  = (self.xi[0]  + self.xi[1]) / 2.
+            xi23mean  = (self.xi[1]  + self.xi[2]) / 2.
+            xim32mean = (self.xi[-3] + self.xi[-2]) / 2.
+            xim21mean = (self.xi[-2] + self.xi[-1]) / 2.
 
-        # Coefficients for rows 1 and -1:
-        r1  = self.EvaluateBsplines3rdDerivatives(xi12mean) \
-            - self.EvaluateBsplines3rdDerivatives(xi23mean)
-        rm1 = self.EvaluateBsplines3rdDerivatives(xim32mean) \
-            - self.EvaluateBsplines3rdDerivatives(xim21mean)
-
+            # Coefficients for rows 1 and -1:
+            r1  = self.EvaluateBsplines3rdDerivatives(xi12mean) \
+                - self.EvaluateBsplines3rdDerivatives(xi23mean)
+            rm1 = self.EvaluateBsplines3rdDerivatives(xim32mean) \
+                - self.EvaluateBsplines3rdDerivatives(xim21mean)
+        elif bc == "clamped":
+            r1 = self.EvaluateBsplines1stDerivatives(self.xi[0])
+            rm1 = self.EvaluateBsplines1stDerivatives(self.xi[-1])
+        elif bc == "natural":
+            r1 = self.EvaluateBsplines2ndDerivatives(self.xi[0])
+            rm1 = self.EvaluateBsplines2ndDerivatives(self.xi[-1])
+        else:
+            raise ValueError("invalid boundary conditions supplied:",bc)
         phi = np.vstack((r1, phi_internal, rm1))
-
         return phi, knots

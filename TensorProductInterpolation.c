@@ -345,6 +345,58 @@ int Bspline_basis_1D(
     return TPI_SUCCESS;
 }
 
+// Evaluate the 1st derivative of the B-spline basis functions B_i(x) for all i at x.
+// Here we specialize to cubic B-spline bases.
+int Bspline_basis_1st_derivative_1D(
+    double *D3_B_array,               // Output: the evaluated 1st derivative of cubic
+                                      // B-splines B_i(x) for the knots defined in bw
+    int n,                            // Input: length of Bx4_array
+    gsl_bspline_workspace *bw,        // Input: Initialized B-spline workspace
+    double x                          // Input: evaluation point
+) {
+    double a = gsl_vector_get(bw->knots, 0);
+    double b = gsl_vector_get(bw->knots, bw->knots->size - 1);
+    if (x < a || x > b) {
+        //fprintf(stderr, "Error: Bspline_basis_1st_derivative_1D(): x: %g is outside of knots vector with bounds [%g, %g]!\n", x, a, b);
+        return TPI_FAIL;
+    }
+
+    size_t n_deriv = 1;
+    gsl_matrix *D3_B = gsl_matrix_alloc(bw->n, n_deriv+1);
+    gsl_bspline_deriv_eval(x, n_deriv, D3_B, bw);
+
+    for (size_t i=0; i<bw->n; i++)
+        D3_B_array[i] = gsl_matrix_get(D3_B, i, 1); // just copy the 1st derivative
+
+    return TPI_SUCCESS;
+}
+
+// Evaluate the 2nd derivative of the B-spline basis functions B_i(x) for all i at x.
+// Here we specialize to cubic B-spline bases.
+int Bspline_basis_2nd_derivative_1D(
+    double *D3_B_array,               // Output: the evaluated 2nd derivative of cubic
+                                      // B-splines B_i(x) for the knots defined in bw
+    int n,                            // Input: length of Bx4_array
+    gsl_bspline_workspace *bw,        // Input: Initialized B-spline workspace
+    double x                          // Input: evaluation point
+) {
+    double a = gsl_vector_get(bw->knots, 0);
+    double b = gsl_vector_get(bw->knots, bw->knots->size - 1);
+    if (x < a || x > b) {
+        //fprintf(stderr, "Error: Bspline_basis_2nd_derivative_1D(): x: %g is outside of knots vector with bounds [%g, %g]!\n", x, a, b);
+        return TPI_FAIL;
+    }
+
+    size_t n_deriv = 2;
+    gsl_matrix *D3_B = gsl_matrix_alloc(bw->n, n_deriv+1);
+    gsl_bspline_deriv_eval(x, n_deriv, D3_B, bw);
+
+    for (size_t i=0; i<bw->n; i++)
+        D3_B_array[i] = gsl_matrix_get(D3_B, i, 2); // just copy the 2nd derivative
+
+    return TPI_SUCCESS;
+}
+
 // Evaluate the 3rd derivative of the B-spline basis functions B_i(x) for all i at x.
 // Here we specialize to cubic B-spline bases.
 int Bspline_basis_3rd_derivative_1D(

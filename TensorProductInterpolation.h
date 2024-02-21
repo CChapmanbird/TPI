@@ -43,6 +43,22 @@ int Bspline_basis_1D(
     double x                            // Input: evaluation point
 );
 
+int Bspline_basis_1st_derivative_1D(
+    double *D3_B_array,                 // Output: the evaluated 1st derivative of cubic
+                                        // B-splines B_i(x) for the knots defined in bw
+    int n,                              // Input: length of Bx4_array
+    gsl_bspline_workspace *bw,          // Input: Initialized B-spline workspace
+    double x                            // Input: evaluation point
+);
+
+int Bspline_basis_2nd_derivative_1D(
+    double *D3_B_array,                 // Output: the evaluated 2nd derivative of cubic
+                                        // B-splines B_i(x) for the knots defined in bw
+    int n,                              // Input: length of Bx4_array
+    gsl_bspline_workspace *bw,          // Input: Initialized B-spline workspace
+    double x                            // Input: evaluation point
+);
+
 int Bspline_basis_3rd_derivative_1D(
     double *D3_B_array,                 // Output: the evaluated 3rd derivative of cubic
                                         // B-splines B_i(x) for the knots defined in bw
